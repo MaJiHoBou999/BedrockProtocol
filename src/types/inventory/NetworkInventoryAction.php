@@ -76,7 +76,6 @@ class NetworkInventoryAction{
 	 */
 	public function readAuthInput(ByteBufferReader $in, int $protocolId) : NetworkInventoryAction{
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			//as of 1.26.40 both paths share the same encoding
 			return $this->readTransaction($in, $protocolId);
 		}
 
@@ -99,12 +98,15 @@ class NetworkInventoryAction{
 		}
 
 		$this->inventorySlot = VarInt::readUnsignedInt($in);
-		$this->oldItem = CommonTypes::getItemStackWrapper($in, $protocolId);
-		$this->newItem = CommonTypes::getItemStackWrapper($in, $protocolId);
+		$this->oldItem = CommonTypes::getItemStackWrapper($in, $protocolId, false);
+		$this->newItem = CommonTypes::getItemStackWrapper($in, $protocolId, false);
 
 		return $this;
 	}
 
+	/**
+	 * @throws \InvalidArgumentException
+	 */
 	public function writeAuthInput(ByteBufferWriter $out, int $protocolId) : void{
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
 			$this->writeTransaction($out, $protocolId);
@@ -139,8 +141,8 @@ class NetworkInventoryAction{
 		}
 
 		VarInt::writeUnsignedInt($out, $this->inventorySlot);
-		CommonTypes::putItemStackWrapper($out, $protocolId, $this->oldItem);
-		CommonTypes::putItemStackWrapper($out, $protocolId, $this->newItem);
+		CommonTypes::putItemStackWrapper($out, $protocolId, $this->oldItem, false);
+		CommonTypes::putItemStackWrapper($out, $protocolId, $this->newItem, false);
 	}
 
 	/**
@@ -156,19 +158,17 @@ class NetworkInventoryAction{
 
 		$this->sourceType = VarInt::readUnsignedInt($in);
 
-		if(Byte::readUnsigned($in) !== 1){
-			throw new PacketDecodeException("Inconsistent optional state for windowId");
+		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_50){
+			$this->windowId = CommonTypes::readOptional($in, Byte::readSigned(...));
+			$this->sourceFlags = CommonTypes::readOptional($in, VarInt::readUnsignedInt(...));
+		}else{
+			$this->windowId = CommonTypes::readDoubleOptional($in, Byte::readSigned(...));
+			$this->sourceFlags = CommonTypes::readDoubleOptional($in, VarInt::readUnsignedInt(...));
 		}
-		$this->windowId = CommonTypes::readOptional($in, Byte::readSigned(...));
-
-		if(Byte::readUnsigned($in) !== 1){
-			throw new PacketDecodeException("Inconsistent optional state for sourceFlags");
-		}
-		$this->sourceFlags = CommonTypes::readOptional($in, VarInt::readUnsignedInt(...));
 
 		$this->inventorySlot = VarInt::readUnsignedInt($in);
-		$this->oldItem = CommonTypes::getNetworkItemStackDescriptor($in);
-		$this->newItem = CommonTypes::getNetworkItemStackDescriptor($in);
+		$this->oldItem = CommonTypes::getItemStackWrapper($in, $protocolId, true);
+		$this->newItem = CommonTypes::getItemStackWrapper($in, $protocolId, true);
 
 		return $this;
 	}
@@ -184,14 +184,16 @@ class NetworkInventoryAction{
 
 		VarInt::writeUnsignedInt($out, $this->sourceType);
 
-		Byte::writeUnsigned($out, 1);
-		CommonTypes::writeOptional($out, $this->windowId, Byte::writeSigned(...));
-
-		Byte::writeUnsigned($out, 1);
-		CommonTypes::writeOptional($out, $this->sourceFlags, VarInt::writeUnsignedInt(...));
+		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_50){
+			CommonTypes::writeOptional($out, $this->windowId, Byte::writeSigned(...));
+			CommonTypes::writeOptional($out, $this->sourceFlags, VarInt::writeUnsignedInt(...));
+		}else{
+			CommonTypes::writeDoubleOptional($out, $this->windowId, Byte::writeSigned(...));
+			CommonTypes::writeDoubleOptional($out, $this->sourceFlags, VarInt::writeUnsignedInt(...));
+		}
 
 		VarInt::writeUnsignedInt($out, $this->inventorySlot);
-		CommonTypes::putNetworkItemStackDescriptor($out, $this->oldItem);
-		CommonTypes::putNetworkItemStackDescriptor($out, $this->newItem);
+		CommonTypes::putItemStackWrapper($out, $protocolId, $this->oldItem, true);
+		CommonTypes::putItemStackWrapper($out, $protocolId, $this->newItem, true);
 	}
 }

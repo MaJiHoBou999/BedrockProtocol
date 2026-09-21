@@ -14,118 +14,88 @@ declare(strict_types=1);
 
 namespace pocketmine\network\mcpe\protocol\types\skin;
 
-use function array_search;
-use function str_starts_with;
-use function strlen;
-use function substr;
+use pocketmine\network\mcpe\protocol\types\PacketOrdinalEnumTrait;
+use function count;
 
-/**
- * As of 1.26.40, persona piece types are sent as a numeric enum instead of the persona_* strings used by the login
- * chain. This maps between the two so that {@link PersonaSkinPiece} can keep using the login representation.
- */
-final class PersonaSkinPieceType{
+enum PersonaSkinPieceType : string{
+	use PacketOrdinalEnumTrait;
 
-	public const UNKNOWN = 0;
-	public const SKELETON = 1;
-	public const BODY = 2;
-	public const SKIN = 3;
-	public const BOTTOM = 4;
-	public const FEET = 5;
-	public const DRESS = 6;
-	public const TOP = 7;
-	public const HIGH_PANTS = 8;
-	public const HANDS = 9;
-	public const OUTERWEAR = 10;
-	public const FACIAL_HAIR = 11;
-	public const MOUTH = 12;
-	public const EYES = 13;
-	public const HAIR = 14;
-	public const HOOD = 15;
-	public const BACK = 16;
-	public const FACE_ACCESSORY = 17;
-	public const HEAD = 18;
-	public const LEGS = 19;
-	public const LEFT_LEG = 20;
-	public const RIGHT_LEG = 21;
-	public const ARMS = 22;
-	public const LEFT_ARM = 23;
-	public const RIGHT_ARM = 24;
-	public const CAPES = 25;
-	public const CLASSIC_SKIN = 26;
-	public const EMOTE = 27;
-	public const UNSUPPORTED = 28;
+	case UNKNOWN = 'unknown';
+	case SKELETON = 'skeleton';
+	case BODY = 'body';
+	case SKIN = 'skin';
+	case BOTTOM = 'bottom';
+	case FEET = 'feet';
+	case DRESS = 'dress';
+	case TOP = 'top';
+	case HIGH_PANTS = 'high_pants'; // TODO: check this, underscores are usually stripped?
+	case HANDS = 'hands';
+	case OUTERWEAR = 'outerwear';
+	case FACIAL_HAIR = 'facialhair';
+	case MOUTH = 'mouth';
+	case EYES = 'eyes';
+	case HAIR = 'hair';
+	case HOOD = 'hood';
+	case BACK = 'back';
+	case FACE_ACCESSORY = 'faceaccessory';
+	case HEAD = 'head';
+	case LEGS = 'legs';
+	case LEFT_LEG = 'leftleg';
+	case RIGHT_LEG = 'rightleg';
+	case ARMS = 'arms';
+	case LEFT_ARM = 'leftarm';
+	case RIGHT_ARM = 'rightarm';
+	case CAPES = 'capes';
+	case CLASSIC_SKIN = 'classicskin';
+	case EMOTE = 'emote';
+	case UNSUPPORTED = 'unsupported';
 
-	/**
-	 * Names as they appear in the login chain. The hands piece is singular there, but plural in the numeric enum.
-	 *
-	 * @var string[]
-	 * @phpstan-var array<int, string>
-	 */
-	private const NAMES = [
-		self::UNKNOWN => "persona_unknown",
-		self::SKELETON => "persona_skeleton",
-		self::BODY => "persona_body",
-		self::SKIN => "persona_skin",
-		self::BOTTOM => "persona_bottom",
-		self::FEET => "persona_feet",
-		self::DRESS => "persona_dress",
-		self::TOP => "persona_top",
-		self::HIGH_PANTS => "persona_high_pants",
-		self::HANDS => "persona_hand",
-		self::OUTERWEAR => "persona_outerwear",
-		self::FACIAL_HAIR => "persona_facial_hair",
-		self::MOUTH => "persona_mouth",
-		self::EYES => "persona_eyes",
-		self::HAIR => "persona_hair",
-		self::HOOD => "persona_hood",
-		self::BACK => "persona_back",
-		self::FACE_ACCESSORY => "persona_face_accessory",
-		self::HEAD => "persona_head",
-		self::LEGS => "persona_legs",
-		self::LEFT_LEG => "persona_left_leg",
-		self::RIGHT_LEG => "persona_right_leg",
-		self::ARMS => "persona_arms",
-		self::LEFT_ARM => "persona_left_arm",
-		self::RIGHT_ARM => "persona_right_arm",
-		self::CAPES => "persona_capes",
-		self::CLASSIC_SKIN => "persona_classic_skin",
-		self::EMOTE => "persona_emote",
-		self::UNSUPPORTED => "unsupported",
+	private const JSON_STRING_TO_CASE = [
+		"persona_unknown" => self::UNKNOWN,
+		"persona_skeleton" => self::SKELETON,
+		"persona_body" => self::BODY,
+		"persona_skin" => self::SKIN,
+		"persona_bottom" => self::BOTTOM,
+		"persona_feet" => self::FEET,
+		"persona_dress" => self::DRESS,
+		"persona_top" => self::TOP,
+		"persona_high_pants" => self::HIGH_PANTS,
+		"persona_hand" => self::HANDS,
+		"persona_outerwear" => self::OUTERWEAR,
+		"persona_facial_hair" => self::FACIAL_HAIR,
+		"persona_mouth" => self::MOUTH,
+		"persona_eyes" => self::EYES,
+		"persona_hair" => self::HAIR,
+		"persona_hood" => self::HOOD,
+		"persona_back" => self::BACK,
+		"persona_face_accessory" => self::FACE_ACCESSORY,
+		"persona_head" => self::HEAD,
+		"persona_legs" => self::LEGS,
+		"persona_left_leg" => self::LEFT_LEG,
+		"persona_right_leg" => self::RIGHT_LEG,
+		"persona_arms" => self::ARMS,
+		"persona_left_arm" => self::LEFT_ARM,
+		"persona_right_arm" => self::RIGHT_ARM,
+		"persona_capes" => self::CAPES,
+		"persona_classic_skin" => self::CLASSIC_SKIN,
+		"persona_emote" => self::EMOTE,
+		"persona_unsupported" => self::UNSUPPORTED,
 	];
 
-	private function __construct(){
-		//NOOP
-	}
+	public function toJsonString() : string{
+		/** @var array<string, string> $caseToJsonString */
+		static $caseToJsonString = [];
 
-	public static function idFromName(string $name) : int{
-		$id = array_search($name, self::NAMES, true);
-
-		return $id === false ? self::UNKNOWN : $id;
-	}
-
-	public static function nameFromId(int $id) : string{
-		return self::NAMES[$id] ?? self::NAMES[self::UNKNOWN];
-	}
-
-	/**
-	 * Tint colours identify the piece they belong to by the short form of the name, without the persona_ prefix.
-	 */
-	public static function shortNameFromName(string $name) : string{
-		if($name === self::NAMES[self::HANDS]){
-			return "hands";
+		if(count($caseToJsonString) === 0){
+			foreach(self::JSON_STRING_TO_CASE as $jsonString => $case){
+				$caseToJsonString[$case->name] = $jsonString;
+			}
 		}
 
-		return str_starts_with($name, "persona_") ? substr($name, strlen("persona_")) : $name;
+		return $caseToJsonString[$this->name] ?? throw new \LogicException("Missing JSON string mapping for case " . $this->name);
 	}
 
-	public static function nameFromShortName(string $shortName) : string{
-		if($shortName === "hands"){
-			return self::NAMES[self::HANDS];
-		}
-		if($shortName === self::NAMES[self::UNSUPPORTED]){
-			return $shortName;
-		}
-
-		return "persona_" . $shortName;
+	public static function fromJsonString(string $raw) : self{
+		return self::JSON_STRING_TO_CASE[$raw] ?? throw new \InvalidArgumentException("Unknown raw '$raw' JSON string case");
 	}
 }

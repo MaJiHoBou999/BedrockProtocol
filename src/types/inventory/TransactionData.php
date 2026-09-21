@@ -17,18 +17,20 @@ namespace pocketmine\network\mcpe\protocol\types\inventory;
 use pmmp\encoding\ByteBufferReader;
 use pmmp\encoding\ByteBufferWriter;
 use pmmp\encoding\DataDecodeException;
-use pmmp\encoding\VarInt;
 use pocketmine\network\mcpe\protocol\PacketDecodeException;
-use pocketmine\network\mcpe\protocol\ProtocolInfo;
 use pocketmine\network\mcpe\protocol\serializer\CommonTypes;
-use function count;
 
 abstract class TransactionData{
-	/** @var NetworkInventoryAction[] */
+
+	/**
+	 * @var NetworkInventoryAction[]
+	 * @phpstan-var list<NetworkInventoryAction>
+	 */
 	protected array $actions = [];
 
 	/**
 	 * @return NetworkInventoryAction[]
+	 * @phpstan-return list<NetworkInventoryAction>
 	 */
 	final public function getActions() : array{
 		return $this->actions;
@@ -41,32 +43,15 @@ abstract class TransactionData{
 	 * @throws PacketDecodeException
 	 */
 	final public function decodeTransaction(ByteBufferReader $in, int $protocolId) : void{
-		$actionCount = VarInt::readUnsignedInt($in);
-		$this->actions = [];
-		for($i = 0; $i < $actionCount; ++$i){
-			$this->actions[] = (new NetworkInventoryAction())->readTransaction($in, $protocolId);
-		}
+		$this->actions = CommonTypes::readList($in, static fn($in) => (new NetworkInventoryAction())->readTransaction($in, $protocolId));
 		$this->decodeData($in, $protocolId);
 	}
 
 	/**
 	 * @throws DataDecodeException
-	 * @throws PacketDecodeException
 	 */
 	final public function decodeAuthInput(ByteBufferReader $in, int $protocolId) : void{
-		$this->actions = [];
-		//as of 1.26.40 the action list sits inside an optional which is itself inside an always-present optional
-		$hasActions = true;
-		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			$hasActions = CommonTypes::getBool($in) && CommonTypes::getBool($in);
-		}
-		if($hasActions){
-			$actionCount = VarInt::readUnsignedInt($in);
-			for($i = 0; $i < $actionCount; ++$i){
-				$this->actions[] = (new NetworkInventoryAction())->readAuthInput($in, $protocolId);
-			}
-		}
-		$this->decodeData($in, $protocolId);
+		$this->actions = CommonTypes::readList($in, static fn($in) => (new NetworkInventoryAction())->readAuthInput($in, $protocolId));
 	}
 
 	/**
@@ -76,26 +61,12 @@ abstract class TransactionData{
 	abstract protected function decodeData(ByteBufferReader $in, int $protocolId) : void;
 
 	final public function encodeTransaction(ByteBufferWriter $out, int $protocolId) : void{
-		VarInt::writeUnsignedInt($out, count($this->actions));
-		foreach($this->actions as $action){
-			$action->writeTransaction($out, $protocolId);
-		}
+		CommonTypes::writeList($out, $this->actions, static fn($out, $a) => $a->writeTransaction($out, $protocolId));
 		$this->encodeData($out, $protocolId);
 	}
 
 	final public function encodeAuthInput(ByteBufferWriter $out, int $protocolId) : void{
-		$hasActions = true;
-		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			CommonTypes::putBool($out, true);
-			CommonTypes::putBool($out, $hasActions = count($this->actions) > 0);
-		}
-		if($hasActions){
-			VarInt::writeUnsignedInt($out, count($this->actions));
-			foreach($this->actions as $action){
-				$action->writeAuthInput($out, $protocolId);
-			}
-		}
-		$this->encodeData($out, $protocolId);
+		CommonTypes::writeList($out, $this->actions, static fn($out, $a) => $a->writeAuthInput($out, $protocolId));
 	}
 
 	abstract protected function encodeData(ByteBufferWriter $out, int $protocolId) : void;

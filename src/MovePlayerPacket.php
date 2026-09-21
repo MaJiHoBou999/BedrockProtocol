@@ -21,6 +21,7 @@ use pmmp\encoding\LE;
 use pmmp\encoding\VarInt;
 use pocketmine\math\Vector3;
 use pocketmine\network\mcpe\protocol\serializer\CommonTypes;
+use pocketmine\network\mcpe\protocol\types\MovePlayerTeleportData;
 
 class MovePlayerPacket extends DataPacket implements ClientboundPacket, ServerboundPacket{
 	public const NETWORK_ID = ProtocolInfo::MOVE_PLAYER_PACKET;
@@ -36,16 +37,15 @@ class MovePlayerPacket extends DataPacket implements ClientboundPacket, Serverbo
 	public float $yaw;
 	public float $headYaw;
 	public int $mode = self::MODE_NORMAL;
-	public bool $onGround = false; //TODO
+	public bool $onGround = false;
 	public int $ridingActorRuntimeId = 0;
-	public int $teleportCause = 0;
-	public int $teleportItem = 0;
+	public ?MovePlayerTeleportData $telemetryData;
 	public int $tick = 0;
 
 	/**
 	 * @generate-create-func
 	 */
-	public static function create(
+	private static function internalCreate(
 		int $actorRuntimeId,
 		Vector3 $position,
 		float $pitch,
@@ -54,8 +54,7 @@ class MovePlayerPacket extends DataPacket implements ClientboundPacket, Serverbo
 		int $mode,
 		bool $onGround,
 		int $ridingActorRuntimeId,
-		int $teleportCause,
-		int $teleportItem,
+		?MovePlayerTeleportData $telemetryData,
 		int $tick,
 	) : self{
 		$result = new self;
@@ -67,10 +66,27 @@ class MovePlayerPacket extends DataPacket implements ClientboundPacket, Serverbo
 		$result->mode = $mode;
 		$result->onGround = $onGround;
 		$result->ridingActorRuntimeId = $ridingActorRuntimeId;
-		$result->teleportCause = $teleportCause;
-		$result->teleportItem = $teleportItem;
+		$result->telemetryData = $telemetryData;
 		$result->tick = $tick;
 		return $result;
+	}
+
+	public static function create(
+		int $actorRuntimeId,
+		Vector3 $position,
+		float $pitch,
+		float $yaw,
+		float $headYaw,
+		int $mode,
+		bool $onGround,
+		int $ridingActorRuntimeId,
+		?MovePlayerTeleportData $telemetryData,
+		int $tick,
+	) : self{
+		if($mode === self::MODE_TELEPORT && $telemetryData === null){
+			throw new \InvalidArgumentException("telemetryData must be provided when mode is MODE_TELEPORT");
+		}
+		return self::internalCreate($actorRuntimeId, $position, $pitch, $yaw, $headYaw, $mode, $onGround, $ridingActorRuntimeId, $telemetryData, $tick);
 	}
 
 	public static function simple(
@@ -84,7 +100,7 @@ class MovePlayerPacket extends DataPacket implements ClientboundPacket, Serverbo
 		int $ridingActorRuntimeId,
 		int $tick,
 	) : self{
-		return self::create($actorRuntimeId, $position, $pitch, $yaw, $headYaw, $mode, $onGround, $ridingActorRuntimeId, 0, 0, $tick);
+		return self::create($actorRuntimeId, $position, $pitch, $yaw, $headYaw, $mode, $onGround, $ridingActorRuntimeId, $mode === self::MODE_TELEPORT ? new MovePlayerTeleportData(0, 0) : null, $tick);
 	}
 
 	protected function decodePayload(ByteBufferReader $in, int $protocolId) : void{
@@ -96,13 +112,10 @@ class MovePlayerPacket extends DataPacket implements ClientboundPacket, Serverbo
 		$this->mode = Byte::readUnsigned($in);
 		$this->onGround = CommonTypes::getBool($in);
 		$this->ridingActorRuntimeId = CommonTypes::getActorRuntimeId($in);
-		//as of 1.26.40 the teleport data is a proper optional instead of being tied to the mode
-		$hasTeleportData = $protocolId >= ProtocolInfo::PROTOCOL_1_26_40 ?
-			CommonTypes::getBool($in) :
-			$this->mode === MovePlayerPacket::MODE_TELEPORT;
-		if($hasTeleportData){
-			$this->teleportCause = LE::readSignedInt($in);
-			$this->teleportItem = LE::readSignedInt($in);
+		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
+			$this->telemetryData = CommonTypes::readOptional($in, MovePlayerTeleportData::read(...));
+		}else{
+			$this->telemetryData = $this->mode === self::MODE_TELEPORT ? MovePlayerTeleportData::read($in) : null;
 		}
 		$this->tick = VarInt::readUnsignedLong($in);
 	}
@@ -112,17 +125,14 @@ class MovePlayerPacket extends DataPacket implements ClientboundPacket, Serverbo
 		CommonTypes::putVector3($out, $this->position);
 		LE::writeFloat($out, $this->pitch);
 		LE::writeFloat($out, $this->yaw);
-		LE::writeFloat($out, $this->headYaw); //TODO
+		LE::writeFloat($out, $this->headYaw);
 		Byte::writeUnsigned($out, $this->mode);
 		CommonTypes::putBool($out, $this->onGround);
 		CommonTypes::putActorRuntimeId($out, $this->ridingActorRuntimeId);
-		$hasTeleportData = $this->mode === MovePlayerPacket::MODE_TELEPORT;
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			CommonTypes::putBool($out, $hasTeleportData);
-		}
-		if($hasTeleportData){
-			LE::writeSignedInt($out, $this->teleportCause);
-			LE::writeSignedInt($out, $this->teleportItem);
+			CommonTypes::writeOptional($out, $this->telemetryData, static fn(ByteBufferWriter $out, MovePlayerTeleportData $data) => $data->write($out));
+		}elseif($this->mode === self::MODE_TELEPORT){
+			($this->telemetryData ?? throw new \InvalidArgumentException("telemetryData must be set when mode is MODE_TELEPORT"))->write($out);
 		}
 		VarInt::writeUnsignedLong($out, $this->tick);
 	}

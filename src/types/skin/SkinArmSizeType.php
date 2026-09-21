@@ -12,19 +12,13 @@
 
 declare(strict_types=1);
 
-namespace pocketmine\network\mcpe\protocol\types;
+namespace pocketmine\network\mcpe\protocol\types\skin;
 
-final class SubChunkPacketEntryWithCacheList{
+use pocketmine\network\mcpe\protocol\types\PacketOrdinalEnumTrait;
 
-	/**
-	 * @param SubChunkPacketEntryWithCache[] $entries
-	 */
-	public function __construct(
-		private array $entries
-	){}
+enum SkinArmSizeType : string{
+	use PacketOrdinalEnumTrait;
 
-	/**
-	 * @return SubChunkPacketEntryWithCache[]
-	 */
-	public function getEntries() : array{ return $this->entries; }
+	case SLIM = "slim";
+	case WIDE = "wide";
 }

@@ -17,9 +17,6 @@ namespace pocketmine\network\mcpe\protocol\types;
 use pmmp\encoding\ByteBufferReader;
 use pmmp\encoding\ByteBufferWriter;
 
-/**
- * A game rule which carries no value at all. This variant only exists as of 1.26.40.
- */
 final class NullGameRule extends GameRule{
 	use GetTypeIdFromConstTrait;
 

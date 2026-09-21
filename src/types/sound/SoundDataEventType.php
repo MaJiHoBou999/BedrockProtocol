@@ -12,18 +12,18 @@
 
 declare(strict_types=1);
 
-namespace pocketmine\network\mcpe\protocol\types\recipe;
+namespace pocketmine\network\mcpe\protocol\types\sound;
 
-use pmmp\encoding\ByteBufferWriter;
+use pocketmine\network\mcpe\protocol\types\PacketIntEnumTrait;
 
-abstract class RecipeWithTypeId{
-	protected function __construct(
-		private int $typeId
-	){}
+enum SoundDataEventType : int{
+	use PacketIntEnumTrait;
 
-	final public function getTypeId() : int{
-		return $this->typeId;
-	}
-
-	abstract public function encode(ByteBufferWriter $out, int $protocolId) : void;
+	case STOP = 0;
+	case SET_VOLUME = 1;
+	case SET_PITCH = 2;
+	case FADE = 3;
+	case SEEK_TO = 4;
+	case PAUSE = 5;
+	case RESUME = 6;
 }

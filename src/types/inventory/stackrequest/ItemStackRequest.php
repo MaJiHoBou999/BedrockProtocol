@@ -23,12 +23,13 @@ use pmmp\encoding\VarInt;
 use pocketmine\network\mcpe\protocol\PacketDecodeException;
 use pocketmine\network\mcpe\protocol\ProtocolInfo;
 use pocketmine\network\mcpe\protocol\serializer\CommonTypes;
-use function count;
+use function array_search;
 
 final class ItemStackRequest{
 	/**
 	 * @param ItemStackRequestAction[] $actions
 	 * @param string[]                 $filterStrings
+	 * @phpstan-param list<ItemStackRequestAction> $actions
 	 * @phpstan-param list<string> $filterStrings
 	 */
 	public function __construct(
@@ -40,7 +41,10 @@ final class ItemStackRequest{
 
 	public function getRequestId() : int{ return $this->requestId; }
 
-	/** @return ItemStackRequestAction[] */
+	/**
+	 * @return ItemStackRequestAction[]
+	 * @phpstan-return list<ItemStackRequestAction>
+	 */
 	public function getActions() : array{ return $this->actions; }
 
 	/**
@@ -81,61 +85,40 @@ final class ItemStackRequest{
 		};
 	}
 
-	/**
-	 * As of 1.26.40 each action is prefixed by the index of its type in the cereal union it's sent under. The two
-	 * container actions in the middle of the type list are never sent and don't have a slot in that union, so every
-	 * type after them is shifted down by two.
-	 */
-	private static function actionTypeToVariant(int $typeId) : int{
-		return $typeId > ItemStackRequestActionType::TAKE_FROM_BUNDLE ? $typeId - 2 : $typeId;
-	}
-
-	private static function variantToActionType(int $variant) : int{
-		return $variant >= ItemStackRequestActionType::PLACE_INTO_BUNDLE ? $variant + 2 : $variant;
-	}
-
 	public static function read(ByteBufferReader $in, int $protocolId) : self{
 		$requestId = CommonTypes::readItemStackRequestId($in);
-		$actions = [];
-		for($i = 0, $len = VarInt::readUnsignedInt($in); $i < $len; ++$i){
+		$actions = CommonTypes::readList($in, static function(ByteBufferReader $in) use ($protocolId) : ItemStackRequestAction{
 			if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-				$variant = VarInt::readUnsignedInt($in);
-				if($variant > self::actionTypeToVariant(ItemStackRequestActionType::CRAFTING_RESULTS_DEPRECATED_ASK_TY_LAING)){
-					throw new PacketDecodeException("Unknown item stack request action variant $variant");
-				}
-				//the type is sent again as a legacy byte, which is the authoritative one
-				$typeId = Byte::readUnsigned($in);
-				$expectedTypeId = self::variantToActionType($variant);
-				if($typeId !== $expectedTypeId){
-					throw new PacketDecodeException("Item stack request action type $typeId does not match variant $variant");
+				$typeId = VarInt::readUnsignedInt($in);
+				$innerTypeId = Byte::readUnsigned($in);
+				$expectedInnerType = ItemStackRequestActionType::INNER_TYPES[$typeId] ?? "unknown";
+				if($expectedInnerType !== $innerTypeId){
+					throw new PacketDecodeException("ItemStackRequestAction type mismatch: outer type $typeId, expected inner type $expectedInnerType, actual inner type $innerTypeId");
 				}
 			}else{
-				$typeId = Byte::readUnsigned($in);
+				$innerTypeId = Byte::readUnsigned($in);
+				$typeId = array_search($innerTypeId, ItemStackRequestActionType::INNER_TYPES, true);
+				if($typeId === false){
+					throw new PacketDecodeException("Unhandled item stack request action type $innerTypeId");
+				}
 			}
-			$actions[] = self::readAction($in, $protocolId, $typeId);
-		}
-		$filterStrings = [];
-		for($i = 0, $len = VarInt::readUnsignedInt($in); $i < $len; ++$i){
-			$filterStrings[] = CommonTypes::getString($in);
-		}
+			return self::readAction($in, $protocolId, $typeId);
+		});
+		$filterStrings = CommonTypes::readList($in, CommonTypes::getString(...));
 		$filterStringCause = LE::readSignedInt($in);
 		return new self($requestId, $actions, $filterStrings, $filterStringCause);
 	}
 
 	public function write(ByteBufferWriter $out, int $protocolId) : void{
 		CommonTypes::writeItemStackRequestId($out, $this->requestId);
-		VarInt::writeUnsignedInt($out, count($this->actions));
-		foreach($this->actions as $action){
+		CommonTypes::writeList($out, $this->actions, static function(ByteBufferWriter $out, ItemStackRequestAction $action) use ($protocolId) : void{
 			if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-				VarInt::writeUnsignedInt($out, self::actionTypeToVariant($action->getTypeId()));
+				VarInt::writeUnsignedInt($out, $action->getTypeId());
 			}
-			Byte::writeUnsigned($out, $action->getTypeId());
+			Byte::writeUnsigned($out, ItemStackRequestActionType::INNER_TYPES[$action->getTypeId()]);
 			$action->write($out, $protocolId);
-		}
-		VarInt::writeUnsignedInt($out, count($this->filterStrings));
-		foreach($this->filterStrings as $string){
-			CommonTypes::putString($out, $string);
-		}
+		});
+		CommonTypes::writeList($out, $this->filterStrings, CommonTypes::putString(...));
 		LE::writeSignedInt($out, $this->filterStringCause);
 	}
 }

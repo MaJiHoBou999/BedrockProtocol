@@ -35,7 +35,6 @@ final class CreativeGroupEntry{
 	public function getIcon() : ItemStack{ return $this->icon; }
 
 	public static function read(ByteBufferReader $in, int $protocolId) : self{
-		//the category became a single byte in 1.26.40
 		$categoryId = $protocolId >= ProtocolInfo::PROTOCOL_1_26_40 ? Byte::readUnsigned($in) : LE::readSignedInt($in);
 		$categoryName = CommonTypes::getString($in);
 		$icon = CommonTypes::getItemStackWithoutStackId($in, $protocolId);

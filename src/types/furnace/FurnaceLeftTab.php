@@ -12,17 +12,20 @@
 
 declare(strict_types=1);
 
-namespace pocketmine\network\mcpe\protocol\types;
+namespace pocketmine\network\mcpe\protocol\types\furnace;
 
-use pmmp\encoding\ByteBufferWriter;
+use pocketmine\network\mcpe\protocol\types\PacketIntEnumTrait;
 
-final class PlayerBlockActionStopBreak implements PlayerBlockAction{
+/**
+ * Spec name: FurnaceLeftTabIndex
+ */
+enum FurnaceLeftTab : int{
+	use PacketIntEnumTrait;
 
-	public function getActionType() : int{
-		return PlayerAction::STOP_BREAK;
-	}
-
-	public function write(ByteBufferWriter $out) : void{
-		//NOOP
-	}
+	case NONE = 0;
+	case RECIPE_FOOD = 1;
+	case RECIPE_ITEMS = 2;
+	case RECIPE_BLOCKS = 3;
+	case RECIPE_SEARCH = 4;
+	case INVENTORY = 5;
 }

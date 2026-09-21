@@ -27,8 +27,17 @@ use function count;
 class PlayerListPacket extends DataPacket implements ClientboundPacket{
 	public const NETWORK_ID = ProtocolInfo::PLAYER_LIST_PACKET;
 
-	public const TYPE_ADD = 0;
-	public const TYPE_REMOVE = 1;
+	public const TYPE_REMOVE = 0;
+	public const TYPE_ADD = 1;
+
+	/**
+	 * @var int[]
+	 * @phpstan-var array<self::TYPE_*, int>
+	 */
+	private const INNER_TYPES = [
+		self::TYPE_ADD => 0,
+		self::TYPE_REMOVE => 1,
+	];
 
 	public int $type;
 	/** @var PlayerListEntry[] */
@@ -38,7 +47,7 @@ class PlayerListPacket extends DataPacket implements ClientboundPacket{
 	 * @generate-create-func
 	 * @param PlayerListEntry[] $entries
 	 */
-	private static function create(int $type, array $entries) : self{
+	public static function create(int $type, array $entries) : self{
 		$result = new self;
 		$result->type = $type;
 		$result->entries = $entries;
@@ -59,27 +68,32 @@ class PlayerListPacket extends DataPacket implements ClientboundPacket{
 		return self::create(self::TYPE_REMOVE, $entries);
 	}
 
+	/**
+	 * @return PlayerListEntry[]
+	 */
+	public function getEntries() : array{ return $this->entries; }
+
 	protected function decodePayload(ByteBufferReader $in, int $protocolId) : void{
-		$modern = $protocolId >= ProtocolInfo::PROTOCOL_1_26_40;
-		if(!$modern){
-			$this->type = Byte::readUnsigned($in);
+		if($protocolId < ProtocolInfo::PROTOCOL_1_26_40){
+			$this->type = Byte::readUnsigned($in) === self::INNER_TYPES[self::TYPE_ADD] ? self::TYPE_ADD : self::TYPE_REMOVE;
 		}
+
 		$count = VarInt::readUnsignedInt($in);
 		for($i = 0; $i < $count; ++$i){
 			$entry = new PlayerListEntry();
-
-			if($modern){
-				//as of 1.26.40 every entry carries its own action, sent as a cereal variant (inverted) followed by
-				//the legacy action byte
-				$variant = VarInt::readUnsignedInt($in);
-				$this->type = Byte::readUnsigned($in);
-				$expectedVariant = $this->type === self::TYPE_ADD ? 1 : 0;
-				if($variant !== $expectedVariant){
-					throw new PacketDecodeException("Player list entry action $this->type does not match variant $variant");
+			if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
+				$entry->type = VarInt::readUnsignedInt($in);
+				$innerType = Byte::readUnsigned($in);
+				$expectedInnerType = self::INNER_TYPES[$entry->type] ?? "unknown";
+				if($innerType !== $expectedInnerType){
+					throw new PacketDecodeException("Unexpected inner type $innerType for player list entry type $entry->type, expected $expectedInnerType");
 				}
+				$type = $entry->type;
+			}else{
+				$type = $this->type;
 			}
 
-			if($this->type === self::TYPE_ADD){
+			if($type === self::TYPE_ADD){
 				$entry->uuid = CommonTypes::getUUID($in);
 				$entry->actorUniqueId = CommonTypes::getActorUniqueId($in);
 				$entry->username = CommonTypes::getString($in);
@@ -91,38 +105,40 @@ class PlayerListPacket extends DataPacket implements ClientboundPacket{
 				$entry->isHost = CommonTypes::getBool($in);
 				if($protocolId >= ProtocolInfo::PROTOCOL_1_20_60){
 					$entry->isSubClient = CommonTypes::getBool($in);
-					if($modern){
-						$entry->color = Color::fromARGB(CommonTypes::getBeArgb($in));
-					}elseif($protocolId >= ProtocolInfo::PROTOCOL_1_21_80){
-						$entry->color = Color::fromARGB(LE::readUnsignedInt($in));
+					if($protocolId >= ProtocolInfo::PROTOCOL_1_21_80){
+						$entry->color = CommonTypes::readColor($in);
 					}
 				}
-			}else{
+			}elseif($type === self::TYPE_REMOVE){
 				$entry->uuid = CommonTypes::getUUID($in);
+			}else{
+				throw new PacketDecodeException("Unknown player list entry type $type");
 			}
-
-			$this->entries[$i] = $entry;
+			$this->entries[] = $entry;
 		}
-		if(!$modern && $this->type === self::TYPE_ADD){
-			//the trusted flag is part of the skin as of 1.26.40
-			for($i = 0; $i < $count; ++$i){
-				$this->entries[$i]->skinData->setVerified(CommonTypes::getBool($in));
+
+		if($protocolId < ProtocolInfo::PROTOCOL_1_26_40 && $this->type === self::TYPE_ADD){
+			foreach($this->entries as $entry){
+				$entry->skinData->setVerified(CommonTypes::getBool($in));
 			}
 		}
 	}
 
 	protected function encodePayload(ByteBufferWriter $out, int $protocolId) : void{
-		$modern = $protocolId >= ProtocolInfo::PROTOCOL_1_26_40;
-		if(!$modern){
-			Byte::writeUnsigned($out, $this->type);
+		if($protocolId < ProtocolInfo::PROTOCOL_1_26_40){
+			Byte::writeUnsigned($out, self::INNER_TYPES[$this->type]);
 		}
+
 		VarInt::writeUnsignedInt($out, count($this->entries));
 		foreach($this->entries as $entry){
-			if($modern){
-				VarInt::writeUnsignedInt($out, $this->type === self::TYPE_ADD ? 1 : 0);
-				Byte::writeUnsigned($out, $this->type);
+			if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
+				VarInt::writeUnsignedInt($out, $entry->type);
+				Byte::writeUnsigned($out, self::INNER_TYPES[$entry->type]);
+			}elseif($entry->type !== $this->type){
+				throw new \InvalidArgumentException("Add and remove entries cannot be mixed in the same packet before 1.26.40");
 			}
-			if($this->type === self::TYPE_ADD){
+
+			if($entry->type === self::TYPE_ADD){
 				CommonTypes::putUUID($out, $entry->uuid);
 				CommonTypes::putActorUniqueId($out, $entry->actorUniqueId);
 				CommonTypes::putString($out, $entry->username);
@@ -134,17 +150,16 @@ class PlayerListPacket extends DataPacket implements ClientboundPacket{
 				CommonTypes::putBool($out, $entry->isHost);
 				if($protocolId >= ProtocolInfo::PROTOCOL_1_20_60){
 					CommonTypes::putBool($out, $entry->isSubClient);
-					if($modern){
-						CommonTypes::putBeArgb($out, ($entry->color ?? new Color(255, 255, 255))->toARGB());
-					}elseif($protocolId >= ProtocolInfo::PROTOCOL_1_21_80){
-						LE::writeUnsignedInt($out, ($entry->color ?? new Color(255, 255, 255))->toARGB());
+					if($protocolId >= ProtocolInfo::PROTOCOL_1_21_80){
+						CommonTypes::writeColor($out, $entry->color ?? new Color(255, 255, 255));
 					}
 				}
 			}else{
 				CommonTypes::putUUID($out, $entry->uuid);
 			}
 		}
-		if(!$modern && $this->type === self::TYPE_ADD){
+
+		if($protocolId < ProtocolInfo::PROTOCOL_1_26_40 && $this->type === self::TYPE_ADD){
 			foreach($this->entries as $entry){
 				CommonTypes::putBool($out, $entry->skinData->isVerified());
 			}

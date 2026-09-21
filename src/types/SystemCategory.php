@@ -16,13 +16,9 @@ namespace pocketmine\network\mcpe\protocol\types;
 
 use pmmp\encoding\ByteBufferReader;
 use pmmp\encoding\ByteBufferWriter;
-use pmmp\encoding\DataDecodeException;
 use pmmp\encoding\LE;
 use pocketmine\network\mcpe\protocol\serializer\CommonTypes;
 
-/**
- * Maps a diagnostics category name to a system index. Only sent as of 1.26.40.
- */
 final class SystemCategory{
 
 	public function __construct(
@@ -34,7 +30,6 @@ final class SystemCategory{
 
 	public function getSystemIndex() : int{ return $this->systemIndex; }
 
-	/** @throws DataDecodeException */
 	public static function read(ByteBufferReader $in) : self{
 		$categoryName = CommonTypes::getString($in);
 		$systemIndex = LE::readUnsignedLong($in);

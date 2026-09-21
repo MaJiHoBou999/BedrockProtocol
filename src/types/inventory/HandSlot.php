@@ -12,19 +12,13 @@
 
 declare(strict_types=1);
 
-namespace pocketmine\network\mcpe\protocol\types;
+namespace pocketmine\network\mcpe\protocol\types\inventory;
 
-final class SubChunkPacketEntryWithoutCacheList{
+use pocketmine\network\mcpe\protocol\types\PacketIntEnumTrait;
 
-	/**
-	 * @param SubChunkPacketEntryWithoutCache[] $entries
-	 */
-	public function __construct(
-		private array $entries
-	){}
+enum HandSlot : int{
+	use PacketIntEnumTrait;
 
-	/**
-	 * @return SubChunkPacketEntryWithoutCache[]
-	 */
-	public function getEntries() : array{ return $this->entries; }
+	case MAINHAND = 0;
+	case OFFHAND = 1;
 }

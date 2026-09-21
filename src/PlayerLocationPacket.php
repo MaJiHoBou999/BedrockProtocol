@@ -56,10 +56,12 @@ class PlayerLocationPacket extends DataPacket implements ClientboundPacket{
 
 	protected function decodePayload(ByteBufferReader $in, int $protocolId) : void{
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			//the fields swapped places and a reserved value was added after the type
 			$this->actorUniqueId = CommonTypes::getActorUniqueId($in);
 			$this->type = PlayerLocationType::fromPacket(VarInt::readUnsignedInt($in));
-			VarInt::readSignedInt($in); //reserved
+			$innerType = VarInt::readSignedInt($in);
+			if($innerType !== $this->type->value){
+				throw new PacketDecodeException("Unexpected inner type, expected {$this->type->value}, got $innerType");
+			}
 		}else{
 			$this->type = PlayerLocationType::fromPacket(LE::readUnsignedInt($in));
 			$this->actorUniqueId = CommonTypes::getActorUniqueId($in);
@@ -74,7 +76,7 @@ class PlayerLocationPacket extends DataPacket implements ClientboundPacket{
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
 			CommonTypes::putActorUniqueId($out, $this->actorUniqueId);
 			VarInt::writeUnsignedInt($out, $this->type->value);
-			VarInt::writeSignedInt($out, 0); //reserved
+			VarInt::writeSignedInt($out, $this->type->value); //inner type
 		}else{
 			LE::writeUnsignedInt($out, $this->type->value);
 			CommonTypes::putActorUniqueId($out, $this->actorUniqueId);

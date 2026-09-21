@@ -30,13 +30,10 @@ class PlaySoundPacket extends DataPacket implements ClientboundPacket{
 	public float $z;
 	public float $volume;
 	public float $pitch;
-	public ?int $serverSoundHandle = null;
-	/**
-	 * How many extra times to repeat the sound after the first playback; 0 (the default) plays it exactly once.
-	 * -1 loops indefinitely, until the sound is stopped through its server sound handle.
-	 * >= ProtocolInfo::PROTOCOL_1_26_40
-	 */
 	public int $loopCount = 0;
+	public bool $bypassListenerRangeCheck = false;
+	public ?int $serverSoundHandle = null;
+	public ?float $playbackPositionSeconds = null;
 
 	/**
 	 * @generate-create-func
@@ -48,7 +45,10 @@ class PlaySoundPacket extends DataPacket implements ClientboundPacket{
 		float $z,
 		float $volume,
 		float $pitch,
+		int $loopCount,
+		bool $bypassListenerRangeCheck,
 		?int $serverSoundHandle,
+		?float $playbackPositionSeconds,
 	) : self{
 		$result = new self;
 		$result->soundName = $soundName;
@@ -57,7 +57,10 @@ class PlaySoundPacket extends DataPacket implements ClientboundPacket{
 		$result->z = $z;
 		$result->volume = $volume;
 		$result->pitch = $pitch;
+		$result->loopCount = $loopCount;
+		$result->bypassListenerRangeCheck = $bypassListenerRangeCheck;
 		$result->serverSoundHandle = $serverSoundHandle;
+		$result->playbackPositionSeconds = $playbackPositionSeconds;
 		return $result;
 	}
 
@@ -72,8 +75,14 @@ class PlaySoundPacket extends DataPacket implements ClientboundPacket{
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
 			$this->loopCount = VarInt::readSignedInt($in);
 		}
+		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_50){
+			$this->bypassListenerRangeCheck = CommonTypes::getBool($in);
+		}
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_20){
 			$this->serverSoundHandle = CommonTypes::readOptional($in, LE::readUnsignedLong(...));
+		}
+		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_50){
+			$this->playbackPositionSeconds = CommonTypes::readOptional($in, LE::readFloat(...));
 		}
 	}
 
@@ -85,8 +94,14 @@ class PlaySoundPacket extends DataPacket implements ClientboundPacket{
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
 			VarInt::writeSignedInt($out, $this->loopCount);
 		}
+		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_50){
+			CommonTypes::putBool($out, $this->bypassListenerRangeCheck);
+		}
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_20){
 			CommonTypes::writeOptional($out, $this->serverSoundHandle, LE::writeUnsignedLong(...));
+		}
+		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_50){
+			CommonTypes::writeOptional($out, $this->playbackPositionSeconds, LE::writeFloat(...));
 		}
 	}
 

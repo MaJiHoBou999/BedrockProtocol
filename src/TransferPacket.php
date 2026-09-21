@@ -26,17 +26,17 @@ class TransferPacket extends DataPacket implements ClientboundPacket{
 	public string $address;
 	public int $port = 19132;
 	public bool $reloadWorld;
-	/** Identifies the gathering being joined on the target server. >= ProtocolInfo::PROTOCOL_1_26_40 */
-	public ?GatheringJoinInfo $gatheringJoinInfo = null;
+	public ?GatheringJoinInfo $gatheringsConfig = null;
 
 	/**
 	 * @generate-create-func
 	 */
-	public static function create(string $address, int $port, bool $reloadWorld) : self{
+	public static function create(string $address, int $port, bool $reloadWorld, ?GatheringJoinInfo $gatheringsConfig) : self{
 		$result = new self;
 		$result->address = $address;
 		$result->port = $port;
 		$result->reloadWorld = $reloadWorld;
+		$result->gatheringsConfig = $gatheringsConfig;
 		return $result;
 	}
 
@@ -47,7 +47,7 @@ class TransferPacket extends DataPacket implements ClientboundPacket{
 			$this->reloadWorld = CommonTypes::getBool($in);
 		}
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			$this->gatheringJoinInfo = CommonTypes::readOptional($in, fn(ByteBufferReader $in) => GatheringJoinInfo::read($in, $protocolId));
+			$this->gatheringsConfig = CommonTypes::readOptional($in, fn(ByteBufferReader $in) => GatheringJoinInfo::read($in, $protocolId));
 		}
 	}
 
@@ -58,7 +58,7 @@ class TransferPacket extends DataPacket implements ClientboundPacket{
 			CommonTypes::putBool($out, $this->reloadWorld);
 		}
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			CommonTypes::writeOptional($out, $this->gatheringJoinInfo, fn(ByteBufferWriter $out, GatheringJoinInfo $info) => $info->write($out, $protocolId));
+			CommonTypes::writeOptional($out, $this->gatheringsConfig, fn(ByteBufferWriter $out, GatheringJoinInfo $v) => $v->write($out, $protocolId));
 		}
 	}
 

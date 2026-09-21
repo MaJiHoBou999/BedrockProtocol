@@ -18,82 +18,94 @@ use pmmp\encoding\ByteBufferReader;
 use pmmp\encoding\ByteBufferWriter;
 use pmmp\encoding\LE;
 use pocketmine\network\mcpe\protocol\serializer\CommonTypes;
-use pocketmine\network\mcpe\protocol\types\SoundDataUpdate;
+use pocketmine\network\mcpe\protocol\types\sound\SoundDataEvent;
 
 class ClientboundUpdateSoundDataPacket extends DataPacket implements ClientboundPacket{
 	public const NETWORK_ID = ProtocolInfo::CLIENTBOUND_UPDATE_SOUND_DATA_PACKET;
 
-	/**
-	 * As of 1.26.40 the packet carries one optional slot per update kind. The slot doesn't constrain which update it
-	 * holds, so they're kept as a plain list here.
-	 */
-	public const MODERN_UPDATE_SLOTS = 7;
-
 	private int $serverSoundHandle;
-	private string $soundEvent;
-	/**
-	 * @var (SoundDataUpdate|null)[]
-	 * @phpstan-var list<SoundDataUpdate|null>
-	 */
-	private array $updates = [];
+	private string $soundEvent = "";
+	private ?SoundDataEvent $stopEvent = null;
+	private ?SoundDataEvent $volumeEvent = null;
+	private ?SoundDataEvent $pitchEvent = null;
+	private ?SoundDataEvent $fadeEvent = null;
+	private ?SoundDataEvent $seekToEvent = null;
+	private ?SoundDataEvent $pauseEvent = null;
+	private ?SoundDataEvent $resumeEvent = null;
 
 	/**
 	 * @generate-create-func
 	 */
-	public static function create(int $serverSoundHandle, string $soundEvent) : self{
+	public static function create(
+		int $serverSoundHandle,
+		string $soundEvent,
+		?SoundDataEvent $stopEvent,
+		?SoundDataEvent $volumeEvent,
+		?SoundDataEvent $pitchEvent,
+		?SoundDataEvent $fadeEvent,
+		?SoundDataEvent $seekToEvent,
+		?SoundDataEvent $pauseEvent,
+		?SoundDataEvent $resumeEvent,
+	) : self{
 		$result = new self;
 		$result->serverSoundHandle = $serverSoundHandle;
 		$result->soundEvent = $soundEvent;
-		return $result;
-	}
-
-	/**
-	 * @param (SoundDataUpdate|null)[] $updates
-	 * @phpstan-param list<SoundDataUpdate|null> $updates
-	 */
-	public static function createModern(int $serverSoundHandle, array $updates) : self{
-		$result = new self;
-		$result->serverSoundHandle = $serverSoundHandle;
-		$result->soundEvent = "";
-		$result->updates = $updates;
+		$result->stopEvent = $stopEvent;
+		$result->volumeEvent = $volumeEvent;
+		$result->pitchEvent = $pitchEvent;
+		$result->fadeEvent = $fadeEvent;
+		$result->seekToEvent = $seekToEvent;
+		$result->pauseEvent = $pauseEvent;
+		$result->resumeEvent = $resumeEvent;
 		return $result;
 	}
 
 	public function getServerSoundHandle() : int{ return $this->serverSoundHandle; }
 
-	/** Only used before 1.26.40. */
 	public function getSoundEvent() : string{ return $this->soundEvent; }
 
-	/**
-	 * Only used as of 1.26.40.
-	 *
-	 * @return (SoundDataUpdate|null)[]
-	 * @phpstan-return list<SoundDataUpdate|null>
-	 */
-	public function getUpdates() : array{ return $this->updates; }
+	public function getStopEvent() : ?SoundDataEvent{ return $this->stopEvent; }
+
+	public function getVolumeEvent() : ?SoundDataEvent{ return $this->volumeEvent; }
+
+	public function getPitchEvent() : ?SoundDataEvent{ return $this->pitchEvent; }
+
+	public function getFadeEvent() : ?SoundDataEvent{ return $this->fadeEvent; }
+
+	public function getSeekToEvent() : ?SoundDataEvent{ return $this->seekToEvent; }
+
+	public function getPauseEvent() : ?SoundDataEvent{ return $this->pauseEvent; }
+
+	public function getResumeEvent() : ?SoundDataEvent{ return $this->resumeEvent; }
 
 	protected function decodePayload(ByteBufferReader $in, int $protocolId) : void{
 		$this->serverSoundHandle = LE::readUnsignedLong($in);
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			$this->soundEvent = "";
-			$this->updates = [];
-			for($i = 0; $i < self::MODERN_UPDATE_SLOTS; ++$i){
-				$this->updates[] = CommonTypes::readOptional($in, SoundDataUpdate::read(...));
-			}
-			return;
+			$this->stopEvent = CommonTypes::readOptional($in, SoundDataEvent::read(...));
+			$this->volumeEvent = CommonTypes::readOptional($in, SoundDataEvent::read(...));
+			$this->pitchEvent = CommonTypes::readOptional($in, SoundDataEvent::read(...));
+			$this->fadeEvent = CommonTypes::readOptional($in, SoundDataEvent::read(...));
+			$this->seekToEvent = CommonTypes::readOptional($in, SoundDataEvent::read(...));
+			$this->pauseEvent = CommonTypes::readOptional($in, SoundDataEvent::read(...));
+			$this->resumeEvent = CommonTypes::readOptional($in, SoundDataEvent::read(...));
+		}else{
+			$this->soundEvent = CommonTypes::getString($in);
 		}
-		$this->soundEvent = CommonTypes::getString($in);
 	}
 
 	protected function encodePayload(ByteBufferWriter $out, int $protocolId) : void{
 		LE::writeUnsignedLong($out, $this->serverSoundHandle);
 		if($protocolId >= ProtocolInfo::PROTOCOL_1_26_40){
-			for($i = 0; $i < self::MODERN_UPDATE_SLOTS; ++$i){
-				CommonTypes::writeOptional($out, $this->updates[$i] ?? null, fn(ByteBufferWriter $out, SoundDataUpdate $update) => $update->write($out));
-			}
-			return;
+			CommonTypes::writeOptional($out, $this->stopEvent, fn(ByteBufferWriter $out, SoundDataEvent $data) => $data->write($out));
+			CommonTypes::writeOptional($out, $this->volumeEvent, fn(ByteBufferWriter $out, SoundDataEvent $data) => $data->write($out));
+			CommonTypes::writeOptional($out, $this->pitchEvent, fn(ByteBufferWriter $out, SoundDataEvent $data) => $data->write($out));
+			CommonTypes::writeOptional($out, $this->fadeEvent, fn(ByteBufferWriter $out, SoundDataEvent $data) => $data->write($out));
+			CommonTypes::writeOptional($out, $this->seekToEvent, fn(ByteBufferWriter $out, SoundDataEvent $data) => $data->write($out));
+			CommonTypes::writeOptional($out, $this->pauseEvent, fn(ByteBufferWriter $out, SoundDataEvent $data) => $data->write($out));
+			CommonTypes::writeOptional($out, $this->resumeEvent, fn(ByteBufferWriter $out, SoundDataEvent $data) => $data->write($out));
+		}else{
+			CommonTypes::putString($out, $this->soundEvent);
 		}
-		CommonTypes::putString($out, $this->soundEvent);
 	}
 
 	public function handle(PacketHandlerInterface $handler) : bool{
